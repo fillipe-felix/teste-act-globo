@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fillipe.testeactglobo.dto.MessageResponseDTO;
 import com.fillipe.testeactglobo.dto.UsuarioDTO;
 import com.fillipe.testeactglobo.entity.Usuario;
+import com.fillipe.testeactglobo.exception.UsuarioNotFoundException;
 import com.fillipe.testeactglobo.repository.UsuarioRepository;
 import lombok.AllArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,24 +37,21 @@ public class UsuarioService {
         MessageResponseDTO messageResponseDTO = null;
 
         try {
+            if(usuarioRepository.findByDocumento(usuario.getDocumento()).isEmpty()){
+                HttpResponse<String> response = criaRequisiçãoGET(URL);
 
-            HttpResponse<String> response = criaRequisiçãoGET(URL);
-
-            if(response.statusCode() == 200){
-                objUsuario = desseralizarObjeto(response.body());
-                toObjUsuario(usuario, objUsuario);
-                objUsuario = usuarioRepository.save(objUsuario);
-                messageResponseDTO = MessageResponseDTO
-                        .builder()
-                        .id(objUsuario.getId())
-                        .message("Usuario cadastrado com sucesso")
-                        .build();
+                if(response.statusCode() == 200){
+                    objUsuario = desseralizarObjeto(response.body());
+                    toObjUsuario(usuario, objUsuario);
+                    objUsuario = usuarioRepository.save(objUsuario);
+                    messageResponseDTO = criarMessageResponse("Usuário cadastrado com sucesso", objUsuario.getDocumento());
+                } else {
+                    messageResponseDTO = criarMessageResponse("CEP inválido, por favor verifique o numero digitado", "");
+                }
             } else {
-                messageResponseDTO = MessageResponseDTO
-                        .builder()
-                        .message("CEP inválido, por favor verifique o numero digitado")
-                        .build();
+                messageResponseDTO = criarMessageResponse("Usuário ja cadastrado, por favor verifique o documento", "");
             }
+
         } catch (URISyntaxException | IOException | InterruptedException e) {
             e.printStackTrace();
         }
@@ -88,5 +86,17 @@ public class UsuarioService {
 
         HttpClient httpClient = HttpClient.newHttpClient();
         return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    public Usuario buscarUsuarioPorDocumento(String documento) throws UsuarioNotFoundException {
+        return usuarioRepository.findByDocumento(documento).orElseThrow(() -> new UsuarioNotFoundException(documento));
+    }
+
+    private MessageResponseDTO criarMessageResponse(String message, String id) {
+        return MessageResponseDTO
+                .builder()
+                .message(message)
+                .id(id)
+                .build();
     }
 }
