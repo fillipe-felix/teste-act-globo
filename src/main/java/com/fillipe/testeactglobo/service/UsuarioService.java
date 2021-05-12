@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fillipe.testeactglobo.dto.MessageResponseDTO;
 import com.fillipe.testeactglobo.dto.UsuarioDTO;
 import com.fillipe.testeactglobo.entity.Usuario;
+import com.fillipe.testeactglobo.exception.UsuarioLocalDateException;
 import com.fillipe.testeactglobo.exception.UsuarioNotFoundException;
 import com.fillipe.testeactglobo.repository.UsuarioRepository;
 import lombok.AllArgsConstructor;
@@ -30,7 +31,7 @@ public class UsuarioService {
     @Autowired
     private final UsuarioRepository usuarioRepository;
 
-    public MessageResponseDTO cadastrarUsuario(UsuarioDTO usuario) {
+    public MessageResponseDTO cadastrarUsuario(UsuarioDTO usuario) throws UsuarioLocalDateException {
 
         String URL = "https://viacep.com.br/ws/" + usuario.getCep() + "/json";
         Usuario objUsuario = new Usuario();
@@ -40,7 +41,7 @@ public class UsuarioService {
             if(usuarioRepository.findByDocumento(usuario.getDocumento()).isEmpty()){
                 HttpResponse<String> response = criaRequisiçãoGET(URL);
 
-                if(response.statusCode() == 200){
+                if(response.statusCode() == 200 && !response.body().contains("erro")){
                     objUsuario = desseralizarObjeto(response.body());
                     toObjUsuario(usuario, objUsuario);
                     objUsuario = usuarioRepository.save(objUsuario);
@@ -59,15 +60,20 @@ public class UsuarioService {
         return messageResponseDTO;
     }
 
-    private void toObjUsuario(UsuarioDTO dtoUsuario, Usuario usuario) {
+    private void toObjUsuario(UsuarioDTO dtoUsuario, Usuario usuario) throws UsuarioLocalDateException {
 
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-        LocalDate dataNascimento = LocalDate.parse(dtoUsuario.getDataNascimento(), formatter);
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd");
+        LocalDate dataNascimento = LocalDate.parse(dtoUsuario.getDataNascimento().replace("-", "/"), formatter);
         LocalDate hoje = LocalDate.now();
 
-        usuario.setNome(dtoUsuario.getNome());
-        usuario.setIdade(Period.between(dataNascimento, hoje).getYears());
-        usuario.setDocumento(dtoUsuario.getDocumento());
+        if(dataNascimento.isBefore(hoje)){
+            usuario.setNome(dtoUsuario.getNome());
+            usuario.setIdade(Period.between(dataNascimento, hoje).getYears());
+            usuario.setDocumento(dtoUsuario.getDocumento());
+        } else {
+            DateTimeFormatter format = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+            throw new UsuarioLocalDateException(hoje.format(format));
+        }
 
     }
 
@@ -92,7 +98,7 @@ public class UsuarioService {
         return usuarioRepository.findByDocumento(documento).orElseThrow(() -> new UsuarioNotFoundException(documento));
     }
 
-    private MessageResponseDTO criarMessageResponse(String message, String id) {
+    public MessageResponseDTO criarMessageResponse(String message, String id) {
         return MessageResponseDTO
                 .builder()
                 .message(message)
